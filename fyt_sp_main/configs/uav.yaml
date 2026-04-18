@@ -1,0 +1,95 @@
+enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+# 注意：代码里会读 yolo_type（建议两个都写，兼容）
+yolo_name: "yolov5"
+yolo_type: "yolov5"
+
+# classifier.cpp 读取 classify_model 字符串并自动替换成 .engine 去加载 :contentReference[oaicite:2]{index=2}
+# 你现在机器上如果只有 onnx，也可以写 onnx；但它仍会去找同名 .engine
+classify_model: "assets/tiny_resnet.onnx"
+camera_name: "daheng"   # <-- 启用大恒相机
+exposure_ms: 5  # 曝光时间，单位是毫秒
+gain: 5.0               # 增益
+vid_pid: "0000:0000"    # GxAPI 通常使用序列号或 IP，但保留此项以兼容现有结构
+yolo11_model_path: "assets/yolo11.xml"
+yolov8_model_path: "assets/yolov8.xml"
+yolov5_model_path: "assets/yolov5.engine"
+
+device: "CPU"
+min_confidence: 0.8
+use_traditional: true
+
+conf_threshold: 0.35
+nms_threshold: 0.25
+
+#####-----ROI-----#####
+roi:
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+use_roi: false
+
+#####-----传统方法参数-----#####
+# Detector 构造里这些都是直接 as<double>()，缺一个就会 TypedBadConversion<double> :contentReference[oaicite:3]{index=3}
+threshold: 150
+max_angle_error: 45
+min_lightbar_ratio: 1.5
+max_lightbar_ratio: 20
+min_lightbar_length: 8
+min_armor_ratio: 1
+max_armor_ratio: 5
+max_side_ratio: 1.5
+max_rectangular_error: 25
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 25
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+yaw_offset: -0.8
+pitch_offset: -1.0
+comming_angle: 60
+leaving_angle: 20
+decision_speed: 10
+high_speed_delay_time: 0.026
+low_speed_delay_time: 0.010
+left_yaw_offset: -1.0
+right_yaw_offset: -0.6
+
+#####-----shooter参数-----#####
+first_tolerance: 5
+second_tolerance: 2
+judge_distance: 3
+auto_fire: true
+
+#####-----gimbal参数-----#####
+com_port: "/dev/gimbal"
+
+#####-----planner参数（必须有！）-----#####
+# Planner 构造里会强制读 fire_thresh 等 double :contentReference[oaicite:4]{index=4}
+fire_thresh: 0.003
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6, 0]
+R_pitch: [1]
+
+#####-----工业相机标定参数（Solver 常用）-----#####
+R_gimbal2imubody: [0, 1, 0, -1, 0, 0, 0, 0, 1]
+
+camera_matrix: [1818.3669452465165, 0, 751.06226574703498,
+                0, 1822.494494078506, 530.43671556112133,
+                0, 0, 1]
+distort_coeffs: [-0.077944626599568856, 0.15447826031486889,
+                 -0.0025714394278524674, 0.00083016311301273629, 0]
+
+R_camera2gimbal: [0.014612449951120876, 0.046780313959008779, 0.99879831724543977,
+                  -0.99980122318425879, 0.014234485571388955, 0.013960427635911155,
+                  -0.013564307047747748, -0.99880377534649645, 0.046979015825152626]
+t_camera2gimbal: [0.07824671108929146, 0.10485292847544668, 0.014032726191958908]

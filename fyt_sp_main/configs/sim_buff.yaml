@@ -1,0 +1,165 @@
+enemy_color: "red"
+# enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+yolo_name: "yolov5"
+yolo_type: "yolov5"
+
+# 这些主要给仓库里其余模块兼容用；auto_buff_sim 主链主要会用到 buff_model_path
+classify_model: "assets/tiny_resnet.engine"
+yolo11_model_path: "assets/yolo11.xml"
+yolov8_model_path: "assets/yolov8.engine"
+yolov5_model_path: "assets/yolov5.engine"
+device: "GPU"
+min_confidence: 0.8
+use_traditional: true
+
+# 给新版 buff 检测链兼容保留
+conf_threshold: 0.35
+nms_threshold: 0.25
+buff_model_path: "assets/yolox_buff.engine"
+
+#####-----ROI-----#####
+roi:
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+use_roi: false
+
+#####-----传统方法参数-----#####
+threshold: 150
+max_angle_error: 45
+min_lightbar_ratio: 1.5
+max_lightbar_ratio: 20
+min_lightbar_length: 8
+min_armor_ratio: 1
+max_armor_ratio: 5
+max_side_ratio: 1.5
+max_rectangular_error: 25
+min_confidence: 0.8
+
+#####-----tracker参数-----#####
+# auto_buff_sim 本身不用 auto_aim tracker，但保留这块，避免共用配置时报缺项
+min_detect_count: 5
+max_temp_lost_count: 15
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+# 这两个是 buff_aimer.cpp 真实会读的
+yaw_offset: 0.0
+pitch_offset: 0.0
+
+# 兼容仓库其它旧逻辑/测试程序，保留
+comming_angle: 60
+leaving_angle: 20
+decision_speed: 8
+high_speed_delay_time: 0.030
+low_speed_delay_time: 0.015
+left_yaw_offset: 0.0
+right_yaw_offset: 0.0
+
+#####-----shooter参数-----#####
+first_tolerance: 3
+second_tolerance: 2
+judge_distance: 2
+auto_fire: true
+
+#####-----工业相机/设备参数-----#####
+# 仿真模式下 ROS2Camera 不会真的去开相机，但有些共用代码可能仍会读这些字段
+camera_name: "daheng"
+exposure_ms: 5
+gain: 5.0
+vid_pid: "0000:0000"
+
+#####-----Solver 标定参数（必须有）-----#####
+# buff_solver 会直接读取这些键
+# 仿真里建议先设成单位阵/零平移，然后运行时由 /tf 动态覆盖 camera->gimbal 外参
+# 如果你还没把 set_camera2gimbal 的动态覆盖补进去，也能先靠下面这组占位值跑通流程
+R_gimbal2imubody: [1, 0, 0,
+                   0, 1, 0,
+                   0, 0, 1]
+
+# 1440x1080 + 垂直FOV 45deg，对应仿真器当前相机参数
+camera_matrix: [1303.6753236814714, 0, 720,
+                0, 1303.6753236814714, 540,
+                0, 0, 1]
+
+distort_coeffs: [0, 0, 0, 0, 0]
+
+R_camera2gimbal: [1, 0, 0,
+                  0, 1, 0,
+                  0, 0, 1]
+
+t_camera2gimbal: [0, 0, 0]
+
+#####-----cboard参数-----#####
+# 仿真模式下 SimBoard 不会用真实 cboard，但保留兼容
+quaternion_canid: 0x100
+bullet_speed_canid: 0x101
+send_canid: 0xff
+can_interface: "can0"
+
+#####-----gimbal参数-----#####
+# 仿真模式下不走串口，但保留兼容
+com_port: "/dev/gimbal"
+
+#####-----planner-----#####
+# 某些共用逻辑会读这些项，保留
+fire_thresh: 0.003
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6, 0]
+R_pitch: [1]
+
+#####-----buff_detector参数-----#####
+# 兼容旧版 detect 分支，保留整块
+detect:
+  contrast: 1
+  brightness:
+    blue: -120
+    red: -100
+  brightness_threshold:
+    blue: 120
+    red: 40
+  morphology_size:
+    blue: 3
+    red: 3
+  dilate_size: 2
+  R_contours_min_area: 200
+  R_contours_max_area: 600
+  fanblades_head_contours_min_area: 3000
+  fanblades_head_contours_max_area: 8000
+  fanblades_body_contours_min_area: 1000
+  fanblades_body_contours_max_area: 4000
+  standard_fanblade_path: "./assets/standard_fanblade.jpg"
+
+# 如果你的 buff_detector 走 model 这套，也一并给上
+model: "assets/yolo11_buff_int8.xml"
+
+#####-----buff_aimer参数-----#####
+# 你当前 buff_aimer.cpp 实际会读 fire_gap_time / predict_time
+fire_gap_time: 0.080
+predict_time: 0.0
+
+# 同时保留旧字段，兼容仓库里其它测试程序
+aim_time: 0.150
+wait_time: 0.300
+command_fire_gap: 0.080
+
+#####-----仿真桥接参数-----#####
+sim_image_topic: "/image_raw"
+sim_tf_topic: "/tf"
+sim_cmd_topic: "/fyt_cmd"
+sim_bullet_speed: 25.0
+
+# 可选: idle / auto_aim / small_buff / big_buff / outpost
+sim_mode: "big_buff"
+
+# auto_buff_sim 自己用
+# 可选: big / small
+sim_buff_mode: "big"
