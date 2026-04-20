@@ -1,20 +1,14 @@
-/* tasks/auto_buff/buff_target.hpp */
 #ifndef AUTO_BUFF__TARGET_HPP
 #define AUTO_BUFF__TARGET_HPP
 
 #include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <optional>
-#include <string>
-#include <vector>
 #include <chrono>
 
-#include "buff_detector.hpp"
 #include "buff_type.hpp"
-#include "tools/extended_kalman_filter.hpp"
 #include "tools/logger.hpp"
 #include "tools/math_tools.hpp"
-#include "tools/ransac_sine_fitter.hpp"
 
 namespace auto_buff
 {
@@ -22,19 +16,34 @@ namespace auto_buff
 class Voter
 {
 public:
-  Voter();
-  void vote(const double angle_last, const double angle_now);
-  int clockwise() const;
-  int votes() const { return clockwise_; }
+  Voter() = default;
+
+  void vote(double last_phase, double now_phase)
+  {
+    double d = tools::limit_rad(now_phase - last_phase);
+    if (d > 0.01) {
+      clockwise_++;
+    } else if (d < -0.01) {
+      clockwise_--;
+    }
+    clockwise_ = std::max(-50, std::min(50, clockwise_));
+  }
+
+  int clockwise() const
+  {
+    return (clockwise_ >= 0) ? 1 : -1;
+  }
 
 private:
-  int clockwise_;
+  int clockwise_ = 0;
 };
 
 class Target
 {
 public:
   Target();
+  virtual ~Target() = default;
+
   virtual void get_target(
     const std::optional<PowerRune> & p,
     std::chrono::steady_clock::time_point & timestamp) = 0;
@@ -47,60 +56,51 @@ public:
   bool is_unsolve() const;
   Eigen::VectorXd ekf_x() const;
 
-  double spd = 0;
+protected:
+  void init_common(double nowtime, const PowerRune & p);
+  void update_common(double nowtime, const PowerRune & p, double omega_alpha);
+
+  double unwrap_to_near(double reference, double wrapped) const;
+
+  double clamp_dt(double dt) const;
+  double clamp_phase_delta(double dphase) const;
+  double clamp_omega(double omega) const;
+  double clamp_predict_dt(double dt) const;
 
 protected:
-  virtual void init(double nowtime, const PowerRune & p) = 0;
-  virtual void update(double nowtime, const PowerRune & p) = 0;
-
-  // --- timebase ---
-  void reset_timebase(std::chrono::steady_clock::time_point & timestamp)
-  {
-    start_timestamp_ = timestamp;
-    has_start_timestamp_ = true;
-  }
-
-  bool compute_nowtime(
-    std::chrono::steady_clock::time_point & timestamp,
-    double & nowtime_out)
-  {
-    if (!has_start_timestamp_) {
-      reset_timebase(timestamp);
-      nowtime_out = 0.0;
-      return false;
-    }
-    nowtime_out = tools::delta_time(timestamp, start_timestamp_);
-    if (nowtime_out < -1e-3) {
-      reset_timebase(timestamp);
-      nowtime_out = 0.0;
-      return true;
-    }
-    return false;
-  }
-
-  // --- EKF data ---
-  Eigen::VectorXd x0_;
-  Eigen::MatrixXd P0_;
-  Eigen::MatrixXd A_;
-  Eigen::MatrixXd Q_;
-  Eigen::MatrixXd H_;
-  Eigen::MatrixXd R_;
-  tools::ExtendedKalmanFilter ekf_;
-  double lasttime_ = 0.0;
-
-  Voter voter;
-
-  // 方向（+1/-1）
-  int rotation_dir_ = 1;
-  bool rotation_dir_locked_ = false;
-
-  bool first_in_;
-  bool unsolvable_;
-
+  bool unsolvable_ = true;
+  bool first_in_ = true;
   int lost_cn_ = 0;
 
-  std::chrono::steady_clock::time_point start_timestamp_;
+  double lasttime_ = 0.0;
   bool has_start_timestamp_ = false;
+  std::chrono::steady_clock::time_point start_timestamp_;
+
+  // tracked state
+  Eigen::Vector3d center_world_ = Eigen::Vector3d::Zero();
+  double center_yaw_ = 0.0;
+  double center_pitch_ = 0.0;
+  double center_distance_ = 0.0;
+
+  double phase_ = 0.0;   // continuous phase
+  double omega_ = 0.0;   // rad/s
+
+  Voter voter_;
+
+  // 兼容 auto_buff_sim.cpp 调试输出
+  Eigen::VectorXd debug_x_;
+
+  static constexpr double kBladeRadius_ = 0.7;
+
+  // ===== 稳定化参数 =====
+  static constexpr double kMinUpdateDt_ = 0.01;      // 10 ms
+  static constexpr double kMaxPredictDt_ = 0.05;     // 50 ms
+  static constexpr double kMaxPhaseStep_ = 0.35;     // rad/frame
+  static constexpr double kMaxOmegaSmall_ = 3.5;     // rad/s
+  static constexpr double kMaxOmegaBig_ = 8.0;       // rad/s
+
+  // ===== 关键：模拟器旋转方向与当前 phase 观测方向相反 =====
+  static constexpr double kOmegaSign_ = -1.0;
 };
 
 class SmallTarget : public Target
@@ -114,13 +114,6 @@ public:
 
   void predict(double dt) override;
   Eigen::Vector3d predict_position(double dt) const override;
-
-private:
-  void init(double nowtime, const PowerRune & p) override;
-  void update(double nowtime, const PowerRune & p) override;
-  Eigen::MatrixXd h_jacobian() const;
-
-  const double SMALL_W = CV_PI / 3;
 };
 
 class BigTarget : public Target
@@ -134,32 +127,8 @@ public:
 
   void predict(double dt) override;
   Eigen::Vector3d predict_position(double dt) const override;
-
-private:
-  void init(double nowtime, const PowerRune & p) override;
-  void update(double nowtime, const PowerRune & p) override;
-  Eigen::MatrixXd h_jacobian() const;
-
-  // --- fitter ---
-  tools::RansacSineFitter spd_fitter_;
-  double fit_spd_;
-
-  // --- last PnP measurement for predict_position ---
-  PowerRune last_measurement_;
-  bool has_last_measurement_ = false;
-
-  // --- debug / edge ---
-  int debug_frame_ = 0;
-  bool last_has_target_ = false;
-
-  // --- NEW: 用于解决“第一片更远”的相位/对齐稳定 ---
-  int track_age_ = 0;          // 进入跟踪后的帧计数
-  int last_align_i_ = 0;       // 上一帧使用的等价类偏移
-  double last_align_err_ = 1e9;
-
-  double ypr_phase_unwrapped_ = 0.0;   // 观测相位的连续版本（仅用于对齐）
-  bool has_ypr_phase_unwrapped_ = false;
 };
 
 }  // namespace auto_buff
+
 #endif

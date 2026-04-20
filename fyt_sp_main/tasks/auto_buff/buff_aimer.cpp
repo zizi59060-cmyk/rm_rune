@@ -16,6 +16,14 @@ Aimer::Aimer(const std::string & config_path)
   predict_time_ = yaml["predict_time"].as<double>();
 
   last_fire_t_ = std::chrono::steady_clock::now();
+
+  // 调试量初始化
+  dbg_calc_cmd_yaw_ = 0.0;
+  dbg_calc_cmd_pitch_ = 0.0;
+  dbg_delta_cmd_yaw_ = 0.0;
+  dbg_delta_cmd_pitch_ = 0.0;
+  dbg_switch_fanblade_ = false;
+  dbg_mistake_count_ = 0;
 }
 
 io::Command Aimer::aim(
@@ -25,37 +33,92 @@ io::Command Aimer::aim(
   bool to_now)
 {
   io::Command command = {false, false, 0, 0};
-  if (target.is_unsolve()) return command;
 
-  if (bullet_speed < 10) bullet_speed = 24;
+  if (target.is_unsolve()) {
+    dbg_calc_cmd_yaw_ = last_yaw_;
+    dbg_calc_cmd_pitch_ = -last_pitch_;
+    dbg_delta_cmd_yaw_ = 0.0;
+    dbg_delta_cmd_pitch_ = 0.0;
+    dbg_switch_fanblade_ = false;
+    dbg_mistake_count_ = mistake_count_;
+
+    // 丢目标时不清 has_last_cmd_
+    // 这样短暂丢帧后重新接上，不会又被当成“首次锁定”
+    return command;
+  }
+
+  if (bullet_speed < 10) {
+    bullet_speed = 24;
+  }
 
   auto now = std::chrono::steady_clock::now();
   auto detect_now_gap = tools::delta_time(now, timestamp);
-  auto future = to_now ? (detect_now_gap + predict_time_) : 0.1 + predict_time_;
+  auto future = to_now ? (detect_now_gap + predict_time_) : (0.1 + predict_time_);
 
   double yaw = last_yaw_;
   double pitch = last_pitch_;
 
   if (get_send_angle(target, future, bullet_speed, to_now, yaw, pitch)) {
+    // 计算出的命令角（pitch 这里先记录下发给下游后的符号）
+    dbg_calc_cmd_yaw_ = yaw;
+    dbg_calc_cmd_pitch_ = -pitch;
+
+    double delta_yaw = tools::limit_rad(yaw - last_yaw_);
+    double delta_pitch = tools::limit_rad(pitch - last_pitch_);
+
+    dbg_delta_cmd_yaw_ = delta_yaw;
+    dbg_delta_cmd_pitch_ = delta_pitch;
+
     command.yaw = yaw;
     command.pitch = -pitch;
 
-    if (mistake_count_ > 3) {
-      switch_fanblade_ = true;
-      mistake_count_ = 0;
-      command.control = true;
-    } else if (std::abs(last_yaw_ - yaw) > 5 / 57.3 || std::abs(last_pitch_ - pitch) > 5 / 57.3) {
-      switch_fanblade_ = true;
-      mistake_count_++;
-      command.control = false;
-    } else {
+    // ========= 关键修改：首次锁定直接接管，不做大跳变判定 =========
+    if (!has_last_cmd_) {
+      last_yaw_ = yaw;
+      last_pitch_ = pitch;
+      has_last_cmd_ = true;
+
       switch_fanblade_ = false;
       mistake_count_ = 0;
       command.control = true;
+
+      dbg_delta_cmd_yaw_ = 0.0;
+      dbg_delta_cmd_pitch_ = 0.0;
+      dbg_switch_fanblade_ = false;
+      dbg_mistake_count_ = 0;
+
+      tools::logger()->info(
+        "[Aimer] first lock accepted: yaw={:.3f} deg pitch={:.3f} deg",
+        yaw * 57.3, (-pitch) * 57.3);
+    } else {
+      // ========= 正常跟踪阶段 =========
+      if (mistake_count_ > 3) {
+        switch_fanblade_ = true;
+        mistake_count_ = 0;
+        command.control = true;
+      } else if (std::abs(delta_yaw) > 5 / 57.3 || std::abs(delta_pitch) > 5 / 57.3) {
+        switch_fanblade_ = true;
+        mistake_count_++;
+        command.control = false;
+      } else {
+        switch_fanblade_ = false;
+        mistake_count_ = 0;
+        command.control = true;
+      }
+
+      dbg_switch_fanblade_ = switch_fanblade_;
+      dbg_mistake_count_ = mistake_count_;
+
+      last_yaw_ = yaw;
+      last_pitch_ = pitch;
     }
-    last_yaw_ = yaw;
-    last_pitch_ = pitch;
   } else {
+    dbg_calc_cmd_yaw_ = last_yaw_;
+    dbg_calc_cmd_pitch_ = -last_pitch_;
+    dbg_delta_cmd_yaw_ = 0.0;
+    dbg_delta_cmd_pitch_ = 0.0;
+    dbg_switch_fanblade_ = false;
+    dbg_mistake_count_ = mistake_count_;
     command.control = false;
   }
 
@@ -88,7 +151,8 @@ bool Aimer::get_send_angle(
     return traj;
   };
 
-  Eigen::Vector3d aim_in_world = target.point_buff2world(Eigen::Vector3d(0.0, 0.0, 0.7));
+  // 与 buff_solver / buff_target 保持一致：扇叶点在 buff 系下为 (0, -0.7, 0)
+  Eigen::Vector3d aim_in_world = target.point_buff2world(Eigen::Vector3d(0.0, -0.7, 0.0));
   auto traj_opt = compute_traj(aim_in_world);
   if (!traj_opt.has_value()) {
     tools::logger()->debug("[Aimer] Unsolvable trajectory: bs={:.2f}", bullet_speed);
@@ -102,10 +166,11 @@ bool Aimer::get_send_angle(
   for (int iter = 0; iter < kMaxIter; ++iter) {
     target.predict(traj.fly_time);
 
-    aim_in_world = target.point_buff2world(Eigen::Vector3d(0.0, 0.0, 0.7));
+    aim_in_world = target.point_buff2world(Eigen::Vector3d(0.0, -0.7, 0.0));
     auto traj2_opt = compute_traj(aim_in_world);
     if (!traj2_opt.has_value()) {
-      tools::logger()->debug("[Aimer] Unsolvable trajectory(it={}): bs={:.2f}", iter, bullet_speed);
+      tools::logger()->debug(
+        "[Aimer] Unsolvable trajectory(it={}): bs={:.2f}", iter, bullet_speed);
       return false;
     }
 

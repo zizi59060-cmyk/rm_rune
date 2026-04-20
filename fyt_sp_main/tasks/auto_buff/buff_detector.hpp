@@ -1,31 +1,30 @@
-/* tasks/auto_buff/buff_detector.hpp */
 #pragma once
 
 #include <optional>
 
 #include "buff_type.hpp"
-// #include "yolo11_buff.hpp" // <-- 删除
-#include "yolox_buff.hpp"  // <-- 包含新的
+#include "yolox_buff.hpp"
 
 namespace auto_buff
 {
+
 class Buff_Detector
 {
 public:
-  Buff_Detector(const std::string & config);
+  explicit Buff_Detector(const std::string & config);
 
-  std::optional<PowerRune> detect(cv::Mat & bgr_img);  // detect_one
-
-  std::optional<PowerRune> detect_24(cv::Mat & bgr_img);  // detect_multi
-
+  std::optional<PowerRune> detect(cv::Mat & bgr_img);
+  std::optional<PowerRune> detect_24(cv::Mat & bgr_img);
   std::optional<PowerRune> detect_debug(cv::Mat & bgr_img, cv::Point2f v);
 
 private:
-  void handle_img(const cv::Mat & bgr_img, cv::Mat & dilated_img);
-
   cv::Point2f get_r_center(std::vector<FanBlade> & fanblades, cv::Mat & bgr_img);
-
   void handle_lose();
+
+  // 统一四角点顺序：
+  // 输入：YOLOX 的 5 个点（[0] 为 R 中心 / [1..4] 为 corners）
+  // 输出：稳定顺序 [r_center, p1, p2, p3, p4]
+  std::vector<cv::Point2f> normalize_kpt_order(const std::vector<cv::Point2f> & raw_kpt) const;
 
   enum Status
   {
@@ -37,8 +36,7 @@ private:
   int lose_;
   const int LOSE_MAX = 10;
   std::optional<PowerRune> last_powerrune_;
-  // YOLO11_BUFF MODE_; // <-- 删除
-  YoloXBuff MODE_;   // <-- 使用新的类
+  YoloXBuff MODE_;
 };
-}  // namespace auto_buff
 
+}  // namespace auto_buff

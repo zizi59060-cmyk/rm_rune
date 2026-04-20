@@ -158,8 +158,8 @@ sim_cmd_topic: "/fyt_cmd"
 sim_bullet_speed: 25.0
 
 # 可选: idle / auto_aim / small_buff / big_buff / outpost
-sim_mode: "big_buff"
+sim_mode: "small_buff"
 
 # auto_buff_sim 自己用
 # 可选: big / small
-sim_buff_mode: "big"
+sim_buff_mode: "small"

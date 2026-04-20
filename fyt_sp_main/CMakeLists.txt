@@ -44,7 +44,6 @@ find_package(tf2_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_typesupport_cpp REQUIRED)
 
-# 这两个是为了解决你现在这类 fastcdr 传递依赖问题
 find_package(fastcdr REQUIRED)
 find_package(fastrtps REQUIRED)
 
@@ -78,10 +77,6 @@ add_subdirectory(io)
 add_subdirectory(tasks/auto_aim)
 add_subdirectory(tasks/auto_buff)
 
-# -------------------------
-# 只保留你现在需要的目标
-# -------------------------
-
 # 离线视频测试
 add_executable(auto_buff_test tests/auto_buff_test.cpp)
 target_link_libraries(auto_buff_test
@@ -103,8 +98,25 @@ target_link_libraries(auto_buff_sim
     tools
     io
 )
-
 ament_target_dependencies(auto_buff_sim
+    rclcpp
+    std_msgs
+    sensor_msgs
+    tf2_msgs
+    builtin_interfaces
+)
+
+# 只看模型输出 / 关键点 / 选 target / solvePnP，不发控制命令
+add_executable(auto_buff_debug_view src/auto_buff_debug_view.cpp)
+target_link_libraries(auto_buff_debug_view
+    ${OpenCV_LIBS}
+    fmt::fmt
+    yaml-cpp
+    auto_buff
+    tools
+    io
+)
+ament_target_dependencies(auto_buff_debug_view
     rclcpp
     std_msgs
     sensor_msgs

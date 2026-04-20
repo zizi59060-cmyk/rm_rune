@@ -21,15 +21,18 @@ class FanBlade
 {
 public:
   cv::Point2f center;
-  std::vector<cv::Point2f> points;
-  double angle, width, height;
-  FanBlade_type type;
+  std::vector<cv::Point2f> points;   // [0] = r center, [1..4] = ordered corners
+  double angle = 0.0;
+  double width = 0.0;
+  double height = 0.0;
+  FanBlade_type type = _unlight;
 
   FanBlade() = default;
 
-  FanBlade(const std::vector<cv::Point2f> & kpt,
-           cv::Point2f keypoints_center,
-           FanBlade_type t);
+  FanBlade(
+    const std::vector<cv::Point2f> & kpt,
+    cv::Point2f keypoints_center,
+    FanBlade_type t);
 
   explicit FanBlade(FanBlade_type t);
 };
@@ -39,25 +42,27 @@ class PowerRune
 public:
   cv::Point2f r_center;
   std::vector<FanBlade> fanblades;
+  int light_num = 0;
 
-  int light_num;
+  // solver outputs
+  Eigen::Vector3d xyz_in_world = Eigen::Vector3d::Zero();
+  Eigen::Vector3d ypr_in_world = Eigen::Vector3d::Zero();   // [yaw, pitch, phase]
+  Eigen::Vector3d ypd_in_world = Eigen::Vector3d::Zero();
 
-  Eigen::Vector3d xyz_in_world;
-  Eigen::Vector3d ypr_in_world;
-  Eigen::Vector3d ypd_in_world;
+  Eigen::Vector3d blade_xyz_in_world = Eigen::Vector3d::Zero();
+  Eigen::Vector3d blade_ypd_in_world = Eigen::Vector3d::Zero();
 
-  Eigen::Vector3d blade_xyz_in_world;
-  Eigen::Vector3d blade_ypd_in_world;
+  Eigen::Matrix3d R_buff2world = Eigen::Matrix3d::Identity();
 
-  Eigen::Matrix3d R_buff2world;
-
-  PowerRune(std::vector<FanBlade> & ts,
-            const cv::Point2f r_center,
-            std::optional<PowerRune> last_powerrune);
+  PowerRune(
+    std::vector<FanBlade> & ts,
+    const cv::Point2f r_center_in,
+    std::optional<PowerRune> last_powerrune);
 
   PowerRune() = default;
 
   FanBlade & target() { return fanblades[0]; }
+  const FanBlade & target() const { return fanblades[0]; }
 
   bool is_unsolve() const { return unsolvable_; }
   void set_unsolve(bool state) { unsolvable_ = state; }
