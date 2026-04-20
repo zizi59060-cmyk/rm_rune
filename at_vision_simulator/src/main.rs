@@ -175,9 +175,9 @@ fn main() {
 struct PreciousCollision(
     HashMap<String, (ColliderConstructorHierarchy, CollisionLayers, Visibility)>,
 );
-
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     spawn_text(&mut commands);
+
     commands.spawn((
         DirectionalLight {
             color: Color::srgb(0.9, 0.95, 1.0),
@@ -201,6 +201,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     let trimesh = ColliderConstructorHierarchy::new(
         ColliderConstructor::TrimeshFromMeshWithConfig(TrimeshFlags::all()),
     );
+
     let voxel = |size| {
         ColliderConstructorHierarchy::new(ColliderConstructor::VoxelizedTrimeshFromMesh {
             voxel_size: size,
@@ -210,24 +211,22 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         })
     };
 
+    // 地面：保留碰撞，但隐藏渲染
     commands.spawn((
         SceneRoot(
-            asset_server
-                .load("embedded://daedalus/assets/GROUND_DISPLAY.glb#Scene0"),
+            asset_server.load("embedded://daedalus/assets/GROUND_DISPLAY.glb#Scene0"),
         ),
         Transform::IDENTITY,
+        Visibility::Hidden,
         PreciousCollision(HashMap::from([(
             "GROUND_LOW".to_string(),
             (trimesh.clone(), layer_env, Visibility::Hidden),
         )])),
     ));
 
+    // 能量机关：保留显示
     let mut power_rune_col = HashMap::from([]);
     for i in 1..=2 {
-        /*power_rune_col.insert(
-            format!("FACE_{}", i).to_string(),
-            (trimesh.clone(), layer_env, Visibility::Visible),
-        );*/
         for j in 1..=5 {
             for k in ["ACTIVATED", "ACTIVE", "COMPLETED", "DISABLED"] {
                 power_rune_col.insert(
@@ -237,6 +236,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             }
         }
     }
+
     commands.spawn((
         RigidBody::Static,
         CollisionMargin(0.001),
@@ -249,6 +249,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         PreciousCollision(power_rune_col),
     ));
 
+    // 只保留本地这辆车
     commands.spawn((
         RigidBody::Dynamic,
         Collider::cylinder(0.2593615, 0.433951),
@@ -276,31 +277,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         LocalInfantry,
     ));
 
-    commands.spawn((
-        RigidBody::Dynamic,
-        Collider::cylinder(0.2593615, 0.433951),
-        CollisionLayers::new(
-            GameLayer::Vehicle,
-            [
-                GameLayer::Default,
-                GameLayer::Vehicle,
-                GameLayer::ProjectileOther,
-                GameLayer::Environment,
-            ],
-        ),
-        Mass(20.0),
-        Friction::new(0.5),
-        Restitution::ZERO,
-        LinearDamping(0.0),
-        AngularDamping(109.8),
-        LockedAxes::new().lock_rotation_x().lock_rotation_z(),
-        SceneRoot(
-            asset_server.load("embedded://daedalus/assets/vehicle.glb#Scene0"),
-        ),
-        Transform::from_xyz(1.0, 1.0, 1.0),
-        InfantryRoot,
-    ));
-
+    // 主相机
     commands.spawn((
         Camera3d::default(),
         Camera::default(),
@@ -320,6 +297,150 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ros2::plugin::MainCamera,
     ));
 }
+// fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+//     spawn_text(&mut commands);
+//     commands.spawn((
+//         DirectionalLight {
+//             color: Color::srgb(0.9, 0.95, 1.0),
+//             shadows_enabled: true,
+//             illuminance: lux::DIRECT_SUNLIGHT,
+//             ..default()
+//         },
+//         Transform::from_xyz(0.0, 4.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+//     ));
+
+//     let layer_env = CollisionLayers::new(
+//         [GameLayer::Environment],
+//         [
+//             GameLayer::Default,
+//             GameLayer::Vehicle,
+//             GameLayer::ProjectileSelf,
+//             GameLayer::ProjectileOther,
+//         ],
+//     );
+
+//     let trimesh = ColliderConstructorHierarchy::new(
+//         ColliderConstructor::TrimeshFromMeshWithConfig(TrimeshFlags::all()),
+//     );
+//     let voxel = |size| {
+//         ColliderConstructorHierarchy::new(ColliderConstructor::VoxelizedTrimeshFromMesh {
+//             voxel_size: size,
+//             fill_mode: FillMode::FloodFill {
+//                 detect_cavities: true,
+//             },
+//         })
+//     };
+
+//     commands.spawn((
+//         SceneRoot(
+//             asset_server
+//                 .load("embedded://daedalus/assets/GROUND_DISPLAY.glb#Scene0"),
+//         ),
+//         Transform::IDENTITY,
+//         PreciousCollision(HashMap::from([(
+//             "GROUND_LOW".to_string(),
+//             (trimesh.clone(), layer_env, Visibility::Hidden),
+//         )])),
+//     ));
+
+//     let mut power_rune_col = HashMap::from([]);
+//     for i in 1..=2 {
+//         /*power_rune_col.insert(
+//             format!("FACE_{}", i).to_string(),
+//             (trimesh.clone(), layer_env, Visibility::Visible),
+//         );*/
+//         for j in 1..=5 {
+//             for k in ["ACTIVATED", "ACTIVE", "COMPLETED", "DISABLED"] {
+//                 power_rune_col.insert(
+//                     format!("FACE_{}_TARGET_{}_{}", i, j, k).to_string(),
+//                     (voxel(0.015), layer_env, Visibility::Visible),
+//                 );
+//             }
+//         }
+//     }
+//     commands.spawn((
+//         RigidBody::Static,
+//         CollisionMargin(0.001),
+//         Restitution::ZERO,
+//         SceneRoot(
+//             asset_server.load("embedded://daedalus/assets/POWER.glb#Scene0"),
+//         ),
+//         Transform::IDENTITY,
+//         PowerRuneRoot,
+//         PreciousCollision(power_rune_col),
+//     ));
+
+//     commands.spawn((
+//         RigidBody::Dynamic,
+//         Collider::cylinder(0.2593615, 0.433951),
+//         CollisionMargin(0.001),
+//         CollisionLayers::new(
+//             GameLayer::Vehicle,
+//             [
+//                 GameLayer::Default,
+//                 GameLayer::Vehicle,
+//                 GameLayer::ProjectileOther,
+//                 GameLayer::Environment,
+//             ],
+//         ),
+//         Mass(20.0),
+//         Friction::new(0.5),
+//         Restitution::ZERO,
+//         LinearDamping(0.0),
+//         AngularDamping(109.8),
+//         LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+//         SceneRoot(
+//             asset_server.load("embedded://daedalus/assets/vehicle.glb#Scene0"),
+//         ),
+//         Transform::from_xyz(0.0, 1.0, 0.0),
+//         InfantryRoot,
+//         LocalInfantry,
+//     ));
+
+//     commands.spawn((
+//         RigidBody::Dynamic,
+//         Collider::cylinder(0.2593615, 0.433951),
+//         CollisionLayers::new(
+//             GameLayer::Vehicle,
+//             [
+//                 GameLayer::Default,
+//                 GameLayer::Vehicle,
+//                 GameLayer::ProjectileOther,
+//                 GameLayer::Environment,
+//             ],
+//         ),
+//         Mass(20.0),
+//         Friction::new(0.5),
+//         Restitution::ZERO,
+//         LinearDamping(0.0),
+//         AngularDamping(109.8),
+//         LockedAxes::new().lock_rotation_x().lock_rotation_z(),
+//         SceneRoot(
+//             asset_server.load("embedded://daedalus/assets/vehicle.glb#Scene0"),
+//         ),
+//         Transform::from_xyz(1.0, 1.0, 1.0),
+//         InfantryRoot,
+//     ));
+
+//     commands.spawn((
+//         Camera3d::default(),
+//         Camera::default(),
+//         Projection::Perspective(PerspectiveProjection {
+//             fov: std::f32::consts::PI / 180.0 * 45.0,
+//             near: 0.1,
+//             far: 500000000.0,
+//             ..default()
+//         }),
+//         Exposure::SUNLIGHT,
+//         Msaa::Off,
+//         Fxaa::default(),
+//         Transform::from_xyz(0.0, 10.0, 15.0).looking_at(Vec3::new(0.0, 0.0, 0.0), Vec3::Y),
+//         MainCamera {
+//             follow_offset: Vec3::new(0.0, 3.0, 2.0),
+//         },
+//         ros2::plugin::MainCamera,
+//     ));
+// }
 
 #[derive(Component, Clone)]
 pub struct Armor(String);
