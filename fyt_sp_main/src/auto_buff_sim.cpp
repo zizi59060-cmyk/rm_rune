@@ -70,22 +70,16 @@ int main(int argc, char * argv[])
     const bool use_big_buff = (sim_buff_mode != "small");
 
     // =========================
-    // 验证开关：二选一
+    // 验证开关
     // =========================
     const bool use_absolute_yaw_cmd = false;
     const bool use_relative_yaw_cmd = true;
-
-    // pitch 先仍按绝对角发，便于单独测 yaw 语义
     const bool use_absolute_pitch_cmd = true;
 
-    // 自动模式限速
-    const double kMaxYawStep = 4.0 / 57.3;     // 每帧最多 4 度
-    const double kMaxPitchStep = 2.0 / 57.3;   // 每帧最多 2 度
-
-    // 如果走相对模式，每帧最多给 sim 的 yaw 增量
+    const double kMaxYawStep = 4.0 / 57.3;
+    const double kMaxPitchStep = 2.0 / 57.3;
     const double kRelativeYawCmdLimit = 4.0 / 57.3;
 
-    // 发送到模拟器前的方向修正
     const bool sim_invert_yaw = false;
     const bool sim_invert_pitch = true;
 
@@ -123,14 +117,9 @@ int main(int argc, char * argv[])
 
     cv::Mat img;
 
-    // 内部自动目标角（仅用于 auto 接管时）
     double last_sent_yaw = 0.0;
     double last_sent_pitch = 0.0;
     bool sent_initialized = false;
-
-    // 本帧解算出来的候选角
-    double last_calc_yaw = 0.0;
-    double last_calc_pitch = 0.0;
 
     auto t_begin = std::chrono::steady_clock::now();
 
@@ -142,11 +131,9 @@ int main(int argc, char * argv[])
         continue;
       }
 
-      // 1) 云台绝对姿态
       Eigen::Quaterniond q = simboard.imu_at(timestamp - std::chrono::milliseconds(1));
       buff_solver.set_R_gimbal2world(q);
 
-      // 2) 相机外参
       Eigen::Matrix3d R_camera2gimbal;
       Eigen::Vector3d t_camera2gimbal;
       if (simboard.camera2gimbal(R_camera2gimbal, t_camera2gimbal)) {
@@ -155,7 +142,6 @@ int main(int argc, char * argv[])
 
       cv::Mat vis = img.clone();
 
-      // 当前云台姿态（世界系 yaw / pitch）
       Eigen::Vector3d ypr = tools::eulers(buff_solver.R_gimbal2world(), 2, 1, 0);
       double gimbal_yaw = ypr[0];
       double gimbal_pitch = ypr[1];
@@ -166,7 +152,6 @@ int main(int argc, char * argv[])
         sent_initialized = true;
       }
 
-      // 3) detect
       std::optional<auto_buff::PowerRune> rune_opt = buff_detector.detect(vis);
 
       io::Command command{};
@@ -180,10 +165,8 @@ int main(int argc, char * argv[])
       if (rune_opt.has_value()) {
         auto & rune = rune_opt.value();
 
-        // 4) solve
         buff_solver.solve(rune_opt);
 
-        // 5) target update
         if (!rune.is_unsolve()) {
           buff_target->get_target(rune_opt, timestamp);
         } else {
@@ -191,7 +174,6 @@ int main(int argc, char * argv[])
           buff_target->get_target(empty, timestamp);
         }
 
-        // 6) aim
         auto ts_for_aim = timestamp;
         command = buff_aimer.aim(*buff_target, ts_for_aim, simboard.bullet_speed, true);
 
@@ -203,16 +185,12 @@ int main(int argc, char * argv[])
         buff_target->get_target(empty, timestamp);
       }
 
-      // Aimer 调试量
       double calc_cmd_yaw = buff_aimer.dbg_calc_cmd_yaw();
       double calc_cmd_pitch = buff_aimer.dbg_calc_cmd_pitch();
       double delta_cmd_yaw = buff_aimer.dbg_delta_cmd_yaw();
       double delta_cmd_pitch = buff_aimer.dbg_delta_cmd_pitch();
       bool switch_fanblade = buff_aimer.dbg_switch_fanblade();
       int mistake_count = buff_aimer.dbg_mistake_count();
-
-      last_calc_yaw = calc_cmd_yaw;
-      last_calc_pitch = calc_cmd_pitch;
 
       double calc_cmd_yaw_wrap = wrap_pi(calc_cmd_yaw);
       double calc_cmd_pitch_wrap = wrap_pi(calc_cmd_pitch);
@@ -232,18 +210,13 @@ int main(int argc, char * argv[])
       send_cmd.yaw = 0.0;
       send_cmd.pitch = 0.0;
 
-      if (target_valid) {
-        // 内部目标角先限速
+      if (target_valid && command.control) {
         last_sent_yaw = step_towards_angle(last_sent_yaw, calc_cmd_yaw, kMaxYawStep);
         last_sent_pitch = step_towards_angle(last_sent_pitch, calc_cmd_pitch, kMaxPitchStep);
 
-        // yaw 误差（相对当前云台）
         yaw_err = wrap_pi(last_sent_yaw - gimbal_yaw);
         yaw_step = clamp(yaw_err, -kRelativeYawCmdLimit, kRelativeYawCmdLimit);
 
-        // =========================
-        // yaw：绝对模式 / 相对模式
-        // =========================
         if (use_absolute_yaw_cmd) {
           sim_send_yaw = last_sent_yaw;
         } else if (use_relative_yaw_cmd) {
@@ -252,14 +225,12 @@ int main(int argc, char * argv[])
           sim_send_yaw = 0.0;
         }
 
-        // pitch 先用绝对角
         if (use_absolute_pitch_cmd) {
           sim_send_pitch = last_sent_pitch;
         } else {
           sim_send_pitch = wrap_pi(last_sent_pitch - (-gimbal_pitch));
         }
 
-        // 发送前方向修正
         if (sim_invert_yaw) {
           sim_send_yaw = wrap_pi(-sim_send_yaw);
         }
@@ -274,12 +245,10 @@ int main(int argc, char * argv[])
 
         sent_this_frame = true;
       } else {
-        // 没目标：显式释放控制权 + 关火
         send_cmd.control = false;
         send_cmd.shoot = false;
         send_cmd.yaw = 0.0;
         send_cmd.pitch = 0.0;
-
         released_this_frame = true;
       }
 
@@ -288,11 +257,9 @@ int main(int argc, char * argv[])
       double sent_yaw_wrap = wrap_pi(last_sent_yaw);
       double sent_pitch_wrap = wrap_pi(last_sent_pitch);
 
-      // 用内部目标角算误差，仅 target_valid 时有意义
       double err_yaw_wrap = wrap_pi(last_sent_yaw - gimbal_yaw);
       double err_pitch_wrap = wrap_pi(last_sent_pitch - gimbal_pitch);
 
-      // target debug
       double target_phase = 0.0;
       double target_omega = 0.0;
       if (!buff_target->is_unsolve()) {
@@ -305,7 +272,21 @@ int main(int argc, char * argv[])
         }
       }
 
-      // PlotJuggler 输出
+      // ===== 新增：预测扇叶点调试量 =====
+      double pred_blade_yaw = 0.0;
+      double pred_blade_pitch = 0.0;
+      double pred_blade_dis = 0.0;
+      bool pred_blade_valid = false;
+
+      if (!buff_target->is_unsolve()) {
+        Eigen::Vector3d pred_blade_world = buff_target->predict_position(0.0);
+        Eigen::Vector3d pred_blade_ypd = tools::xyz2ypd(pred_blade_world);
+        pred_blade_yaw = pred_blade_ypd[0];
+        pred_blade_pitch = pred_blade_ypd[1];
+        pred_blade_dis = pred_blade_ypd[2];
+        pred_blade_valid = true;
+      }
+
       {
         nlohmann::json data;
         double t = std::chrono::duration<double>(
@@ -339,6 +320,7 @@ int main(int argc, char * argv[])
         data["cmd_yaw_wrap"] = wrap_pi(command.yaw) * 57.3;
         data["cmd_pitch_wrap"] = wrap_pi(command.pitch) * 57.3;
 
+        data["aimer_control"] = command.control ? 1 : 0;
         data["yaw_err"] = yaw_err * 57.3;
         data["yaw_step"] = yaw_step * 57.3;
 
@@ -365,6 +347,11 @@ int main(int argc, char * argv[])
         data["sim_invert_yaw"] = sim_invert_yaw ? 1 : 0;
         data["sim_invert_pitch"] = sim_invert_pitch ? 1 : 0;
 
+        data["pred_blade_valid"] = pred_blade_valid ? 1 : 0;
+        data["pred_blade_yaw"] = pred_blade_valid ? (pred_blade_yaw * 57.3) : 0.0;
+        data["pred_blade_pitch"] = pred_blade_valid ? (pred_blade_pitch * 57.3) : 0.0;
+        data["pred_blade_dis"] = pred_blade_valid ? pred_blade_dis : 0.0;
+
         if (rune_opt.has_value()) {
           const auto & p = rune_opt.value();
           data["detected"] = 1;
@@ -387,7 +374,6 @@ int main(int argc, char * argv[])
         plotter.plot(data);
       }
 
-      // 画面显示
       tools::draw_text(
         vis,
         fmt::format("MODE: {}",
@@ -447,19 +433,18 @@ int main(int argc, char * argv[])
 
       tools::draw_text(
         vis,
-        fmt::format("switch:{} mistake:{} valid:{} sent:{} released:{}",
+        fmt::format("switch:{} mistake:{} valid:{} aimer_ctrl:{} send_ctrl:{}",
                     static_cast<int>(switch_fanblade),
                     mistake_count,
                     static_cast<int>(target_valid),
-                    static_cast<int>(sent_this_frame),
-                    static_cast<int>(released_this_frame)),
+                    static_cast<int>(command.control),
+                    static_cast<int>(send_cmd.control)),
         {10, 270}, {255, 200, 50});
 
       tools::draw_text(
         vis,
-        fmt::format("shoot:{} ctrl:{} bullet_speed:{:.2f}",
+        fmt::format("shoot:{} bullet_speed:{:.2f}",
                     send_cmd.shoot ? 1 : 0,
-                    send_cmd.control ? 1 : 0,
                     simboard.bullet_speed),
         {10, 300}, {200, 255, 100});
 
@@ -480,6 +465,16 @@ int main(int argc, char * argv[])
                       p.blade_ypd_in_world[1] * 57.3,
                       p.blade_ypd_in_world[2]),
           {10, 360}, {120, 220, 255});
+      }
+
+      if (pred_blade_valid) {
+        tools::draw_text(
+          vis,
+          fmt::format("pred_blade_yaw:{:.2f} pred_blade_pitch:{:.2f} pred_blade_dis:{:.2f}",
+                      pred_blade_yaw * 57.3,
+                      pred_blade_pitch * 57.3,
+                      pred_blade_dis),
+          {10, 390}, {80, 255, 180});
       }
 
       cv::Mat vis_show;

@@ -137,22 +137,19 @@ void Target::update_common(double nowtime, const PowerRune & p, double omega_alp
 
   voter_.vote(phase_, phase_ + dphase);
 
-  // 关键修正：
-  // 当前 phase 观测方向和模拟器真实转向相反，所以这里翻转符号
+  // 当前模拟器里 phase 观测方向与真实旋转方向相反，保留这里的修正
   double new_omega = kOmegaSign_ * (dphase / dt);
   new_omega = clamp_omega(new_omega);
 
   omega_ = (1.0 - omega_alpha) * omega_ + omega_alpha * new_omega;
   omega_ = clamp_omega(omega_);
 
-  // center 低通
   constexpr double a_center = 0.25;
   center_world_ = (1.0 - a_center) * center_world_ + a_center * p.xyz_in_world;
   center_yaw_ = (1.0 - a_center) * center_yaw_ + a_center * meas_yaw;
   center_pitch_ = (1.0 - a_center) * center_pitch_ + a_center * meas_pitch;
   center_distance_ = (1.0 - a_center) * center_distance_ + a_center * meas_dis;
 
-  // 当前 phase 仍然贴合观测本身，不翻
   constexpr double a_phase = 0.30;
   phase_ = phase_ + a_phase * dphase;
 
@@ -182,12 +179,10 @@ Eigen::Vector3d Target::point_buff2world(const Eigen::Vector3d & point_in_buff) 
     return predict_position(0.0);
   }
 
-  // rune center
   if (point_in_buff.norm() < 1e-6) {
     return center_world_;
   }
 
-  // 其他点给统一近似映射
   Eigen::Vector3d u(-std::sin(center_yaw_), std::cos(center_yaw_), 0.0);
   Eigen::Vector3d v(0.0, 0.0, 1.0);
   Eigen::Vector3d w(std::cos(center_yaw_), std::sin(center_yaw_), 0.0);
@@ -236,7 +231,6 @@ void SmallTarget::get_target(
 
   update_common(nowtime, p.value(), 0.35);
 
-  // 小符速度额外收紧
   if (omega_ > kMaxOmegaSmall_) {
     omega_ = kMaxOmegaSmall_;
   } else if (omega_ < -kMaxOmegaSmall_) {
@@ -291,8 +285,9 @@ Eigen::Vector3d SmallTarget::predict_position(double dt) const
   const Eigen::Vector3d u(-std::sin(center_yaw_), std::cos(center_yaw_), 0.0);
   const Eigen::Vector3d v(0.0, 0.0, 1.0);
 
+  // 与 buff_solver.cpp 的 blade_point_from_phase 保持一致
   Eigen::Vector3d offset =
-    kBladeRadius_ * (-std::cos(future_phase) * u + std::sin(future_phase) * v);
+    kBladeRadius_ * (std::cos(future_phase) * u + std::sin(future_phase) * v);
 
   return center_world_ + offset;
 }
@@ -376,8 +371,9 @@ Eigen::Vector3d BigTarget::predict_position(double dt) const
   const Eigen::Vector3d u(-std::sin(center_yaw_), std::cos(center_yaw_), 0.0);
   const Eigen::Vector3d v(0.0, 0.0, 1.0);
 
+  // 与 buff_solver.cpp 的 blade_point_from_phase 保持一致
   Eigen::Vector3d offset =
-    kBladeRadius_ * (-std::cos(future_phase) * u + std::sin(future_phase) * v);
+    kBladeRadius_ * (std::cos(future_phase) * u + std::sin(future_phase) * v);
 
   return center_world_ + offset;
 }

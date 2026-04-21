@@ -76,30 +76,27 @@ protected:
   bool has_start_timestamp_ = false;
   std::chrono::steady_clock::time_point start_timestamp_;
 
-  // tracked state
   Eigen::Vector3d center_world_ = Eigen::Vector3d::Zero();
   double center_yaw_ = 0.0;
   double center_pitch_ = 0.0;
   double center_distance_ = 0.0;
 
-  double phase_ = 0.0;   // continuous phase
-  double omega_ = 0.0;   // rad/s
+  double phase_ = 0.0;
+  double omega_ = 0.0;
 
   Voter voter_;
 
-  // 兼容 auto_buff_sim.cpp 调试输出
   Eigen::VectorXd debug_x_;
 
   static constexpr double kBladeRadius_ = 0.7;
 
-  // ===== 稳定化参数 =====
-  static constexpr double kMinUpdateDt_ = 0.01;      // 10 ms
-  static constexpr double kMaxPredictDt_ = 0.05;     // 50 ms
-  static constexpr double kMaxPhaseStep_ = 0.35;     // rad/frame
-  static constexpr double kMaxOmegaSmall_ = 3.5;     // rad/s
-  static constexpr double kMaxOmegaBig_ = 8.0;       // rad/s
+  static constexpr double kMinUpdateDt_ = 0.01;
+  static constexpr double kMaxPredictDt_ = 0.05;
+  static constexpr double kMaxPhaseStep_ = 0.35;
+  static constexpr double kMaxOmegaSmall_ = 3.5;
+  static constexpr double kMaxOmegaBig_ = 8.0;
 
-  // ===== 关键：模拟器旋转方向与当前 phase 观测方向相反 =====
+  // 这里先改回正常同号，验证 phase 观测方向与预测方向是否一致
   static constexpr double kOmegaSign_ = -1.0;
 };
 

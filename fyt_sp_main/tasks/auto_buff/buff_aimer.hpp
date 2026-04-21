@@ -53,7 +53,7 @@ private:
   bool switch_fanblade_ = false;
   int mistake_count_ = 0;
 
-  // 新增：是否已经有有效的上一帧命令
+  // 是否已经有上一帧有效命令
   bool has_last_cmd_ = false;
 
   std::chrono::steady_clock::time_point last_fire_t_;

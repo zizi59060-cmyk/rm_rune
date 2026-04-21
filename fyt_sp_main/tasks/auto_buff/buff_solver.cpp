@@ -58,14 +58,9 @@ Eigen::Vector3d Solver::blade_point_from_phase(
   const Eigen::Vector3d & center_world,
   double phase) const
 {
-  // u: 水平切向基
-  // v: 竖直向上基
   const Eigen::Vector3d u(-std::sin(center_yaw), std::cos(center_yaw), 0.0);
   const Eigen::Vector3d v(0.0, 0.0, 1.0);
 
-  // 新的统一手性定义：
-  // phase = atan2(img_v.y, img_v.x)
-  // 这里也必须用同一手性恢复 blade 点
   Eigen::Vector3d offset =
     kBladeRadius_ * (std::cos(phase) * u + std::sin(phase) * v);
 
@@ -117,14 +112,13 @@ void Solver::solve(std::optional<PowerRune> & ps) const
   const double center_yaw = p.ypd_in_world[0];
   const double center_pitch = p.ypd_in_world[1];
 
-  // 用图像中 r -> blade 的方向定义 phase
   cv::Point2f img_r = p.r_center;
   cv::Point2f img_b = p.target().center;
   cv::Point2f img_v = img_b - img_r;
 
-  // 关键修正：
-  // 用和 blade_point_from_phase 同一套手性
-  double phase = std::atan2(img_v.y, img_v.x);
+  // 图像 y 向下为正，世界 z 向上为正，所以这里只翻 y
+  double phase = std::atan2(-img_v.y, img_v.x);
+  phase = tools::limit_rad(phase);
 
   Eigen::Vector3d blade_world =
     blade_point_from_phase(center_yaw, center_world, phase);
