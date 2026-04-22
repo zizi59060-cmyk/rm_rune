@@ -116,8 +116,9 @@ void Solver::solve(std::optional<PowerRune> & ps) const
   cv::Point2f img_b = p.target().center;
   cv::Point2f img_v = img_b - img_r;
 
-  // 图像 y 向下为正，世界 z 向上为正，所以这里只翻 y
-  double phase = std::atan2(-img_v.y, img_v.x);
+  // 这里改成与当前模拟器实际旋向一致的定义
+  // 原来是 atan2(-img_v.y, img_v.x)，会导致 obs/pred 与真实扇叶方向相反
+  double phase = std::atan2(img_v.y, img_v.x);
   phase = tools::limit_rad(phase);
 
   Eigen::Vector3d blade_world =

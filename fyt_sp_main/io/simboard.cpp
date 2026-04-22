@@ -96,7 +96,11 @@ void SimBoard::tf_callback(const tf2_msgs::msg::TFMessage::SharedPtr msg)
 
     if (child == "gimbal_link") {
       const auto t = stamp_sync_.to_steady(tf.header.stamp);
-      imu_queue_.push_back({to_eigen_q(tf.transform.rotation), t});
+      imu_queue_.push_back({
+        to_eigen_q(tf.transform.rotation),
+        to_eigen_t(tf.transform.translation),
+        t
+      });
       while (imu_queue_.size() > 512) {
         imu_queue_.pop_front();
       }
@@ -160,6 +164,37 @@ Eigen::Quaterniond SimBoard::imu_at(std::chrono::steady_clock::time_point timest
   }
 
   return imu_queue_.back().q;
+}
+
+Eigen::Vector3d SimBoard::gimbal_position_at(std::chrono::steady_clock::time_point timestamp)
+{
+  std::unique_lock<std::mutex> lock(mtx_);
+  cv_.wait(lock, [this]() { return !imu_queue_.empty(); });
+
+  if (imu_queue_.size() == 1 || timestamp <= imu_queue_.front().timestamp) {
+    return imu_queue_.front().t;
+  }
+
+  if (timestamp >= imu_queue_.back().timestamp) {
+    return imu_queue_.back().t;
+  }
+
+  for (size_t i = 1; i < imu_queue_.size(); ++i) {
+    if (imu_queue_[i].timestamp < timestamp) {
+      continue;
+    }
+
+    const auto & a = imu_queue_[i - 1];
+    const auto & b = imu_queue_[i];
+
+    const std::chrono::duration<double> ab = b.timestamp - a.timestamp;
+    const std::chrono::duration<double> ac = timestamp - a.timestamp;
+
+    const double k = (ab.count() <= 1e-9) ? 0.0 : (ac.count() / ab.count());
+    return (1.0 - k) * a.t + k * b.t;
+  }
+
+  return imu_queue_.back().t;
 }
 
 bool SimBoard::camera2gimbal(Eigen::Matrix3d & R_camera2gimbal, Eigen::Vector3d & t_camera2gimbal) const

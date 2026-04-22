@@ -48,6 +48,10 @@ public:
   ~SimBoard();
 
   Eigen::Quaterniond imu_at(std::chrono::steady_clock::time_point timestamp);
+
+  // 新增：获取 gimbal 在 world 下的位置
+  Eigen::Vector3d gimbal_position_at(std::chrono::steady_clock::time_point timestamp);
+
   bool camera2gimbal(Eigen::Matrix3d & R_camera2gimbal, Eigen::Vector3d & t_camera2gimbal) const;
   void send(Command command) const;
 
@@ -55,6 +59,7 @@ private:
   struct IMUData
   {
     Eigen::Quaterniond q;
+    Eigen::Vector3d t;
     std::chrono::steady_clock::time_point timestamp;
   };
 
@@ -90,6 +95,7 @@ private:
   Eigen::Matrix3d R_camera2gimbal_{Eigen::Matrix3d::Identity()};
   Eigen::Vector3d t_camera2gimbal_{Eigen::Vector3d::Zero()};
 };
+
 }  // namespace io
 
 #endif  // IO__SIMBOARD_HPP

@@ -213,6 +213,23 @@ fn capture_rune(
     });
 }
 
+/// 将“ROS 对齐世界系”里的 yaw/pitch 命令，转换成 Bevy 世界系里的全局旋转。
+///
+/// 背景：
+/// - /tf 发布时调用了 transform()，其中对位姿做了 M_ALIGN_MAT3 对齐
+/// - 算法侧通过 /tf 看到的是 ROS 对齐后的世界系
+/// - 因此 /fyt_cmd 发回来的 yaw/pitch 也应该按 ROS 对齐世界系解释
+/// - 这里将 ROS 世界系旋转反变换回 Bevy 世界系旋转，再用于控制云台
+fn ros_yaw_pitch_to_bevy_global_quat(yaw_ros: f32, pitch_ros: f32) -> Quat {
+    let q_ros = Quat::from_euler(EulerRot::YXZ, -yaw_ros, pitch_ros, 0.0);
+
+    let align_quat = Quat::from_mat3(&M_ALIGN_MAT3);
+
+    // transform() 里是：q_ros = A * q_bevy * A^-1
+    // 所以反变换：q_bevy = A^-1 * q_ros * A
+    align_quat.inverse() * q_ros * align_quat
+}
+
 fn apply_fyt_cmd_to_gimbal(
     cmd_state: Res<FytCommandState>,
     chassis_global: Single<
@@ -229,7 +246,12 @@ fn apply_fyt_cmd_to_gimbal(
         return;
     }
 
-    let desired_global = Quat::from_euler(EulerRot::YXZ, cmd.yaw, cmd.pitch, 0.0);
+    // 旧版：
+    // let desired_global = Quat::from_euler(EulerRot::YXZ, cmd.yaw, cmd.pitch, 0.0);
+
+    // 新版：把 ROS 世界系命令转换回 Bevy 世界系
+    let desired_global = ros_yaw_pitch_to_bevy_global_quat(cmd.yaw, cmd.pitch);
+
     let local_rotation = chassis_global.rotation().inverse() * desired_global;
     let (local_yaw, pitch, _) = local_rotation.to_euler(EulerRot::YXZ);
 
